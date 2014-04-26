@@ -47,14 +47,13 @@ toHslString = (h) ->
 	"rgb(#{r}, #{g}, #{b})"
 
 saveFrame = ->
-	file = dir + "frame#{("00000" + frame++)[-5..]}.png"
-	out = fs.createWriteStream(file)
-	write = true
-	stream = drawColours().pngStream()
-	stream.on('data', (chunk) -> out.write(chunk) if write)
-	stream.on('end', ->
-		console.log("saved png to #{file}")
-		write = false)
+	path = dir + "frame#{("00000" + frame++)[-5..]}.png"
+	fd = fs.openSync(path, 'w')
+	canvas = drawColours()
+	buffer = canvas.toBuffer()
+	fs.writeSync(fd, buffer, 0, buffer.length, null)
+	fs.closeSync(fd)
+	console.log("saved png to #{path}")
 
 
 drawColours = ->
