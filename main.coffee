@@ -1,24 +1,71 @@
+fs = require('fs')
+Canvas = require('canvas')
+
+[width, height] = [400, 400]
 [rectWidth, rectHeight] = [20, 20]
 
+dir = __dirname + "/frames/"
+
 # Initialised by reset().
-checkDoneInterval = null
 colours = null
-context = null
-height = null
 index = null
 start = null
-width = null
-
-# We set this after document is ready.
-canvas = null
+frame = null
 
 timeouts = []
 defer = (fn) ->
-	timeouts.push(window.setTimeout(fn, 0))
+	saveFrame()
+	fn()
+
+# From Adam Bachman, https://gist.github.com/abachman/3716319
+Colors =
+	hslToRgb: (h, s, l) ->
+		if s == 0
+			r = g = b = l # achromatic
+		else
+			hue2rgb = (p, q, t) ->
+				if t < 0 then t += 1
+				if t > 1 then t -= 1
+				if t < 1/6 then return p + (q - p) * 6 * t
+				if t < 1/2 then return q
+				if t < 2/3 then return p + (q - p) * (2/3 - t) * 6
+				return p
+
+			q = if l < 0.5 then l * (1 + s) else l + s - l * s
+			p = 2 * l - q
+			r = hue2rgb(p, q, h + 1/3)
+			g = hue2rgb(p, q, h)
+			b = hue2rgb(p, q, h - 1/3)
+
+		[r * 255, g * 255, b * 255]
+
 
 toHslString = (h) ->
-	# Firefox doesn't like a semicolon here. Go figure!
-	"hsl(#{h}, 100%, 50%)"
+	#"hsl(#{h}, 100%, 50%)"
+	# hsl seems to be buggy for node-canvas?
+	[r, g, b] = (Math.round(x) for x in Colors.hslToRgb(h/360, 1, 0.5))
+	"rgb(#{r}, #{g}, #{b})"
+
+saveFrame = ->
+	file = dir + "frame#{("00000" + frame++)[-5..]}.png"
+	out = fs.createWriteStream(file)
+	write = true
+	stream = drawColours().pngStream()
+	stream.on('data', (chunk) -> out.write(chunk) if write)
+	stream.on('end', ->
+		console.log("saved png to #{file}")
+		write = false)
+
+
+drawColours = ->
+	canvas = new Canvas(width, height)
+	context = canvas.getContext('2d')
+
+	for c in colours
+			context.fillStyle = toHslString(c.hue)
+			context.fillRect(c.x, c.y, rectWidth, rectHeight)
+
+	canvas
 
 initColours = ->
 	for x in [0...width] by rectWidth
@@ -27,41 +74,17 @@ initColours = ->
 			hue = Math.floor(256*val)
 			colours.push({ val: val, hue: hue, x: x, y: y })
 
-			context.fillStyle = toHslString(hue)
-			context.fillRect(x, y, rectWidth, rectHeight)
-
-checkDone = ->
-	for i in [1...colours.length]
-		return if colours[i - 1].val > colours[i].val
-
-	end = Date.now()
-	window.clearInterval(checkDoneInterval)
-
-	ms = end - start
-
-	$('#algoName').html($('#algo').val())
-	$('#ms').html(ms)
 
 reset = ->
-	window.clearInterval(checkDoneInterval) if checkDoneInterval?
-	window.clearTimeout(timeout) while (timeout = timeouts.pop())
 
 	colours = []
 	index = 1
-	win = $(document)
-	[width, height] = [$(document).width(), $(document).height()]
+	frame = 0
 
-	canvas.attr('width', width)
-	canvas.attr('height', height)
 
-	context = canvas[0].getContext('2d')
-
-	start = Date.now()
 
 	initColours()
 	defer(sort)
-
-	checkDoneInterval = window.setInterval(checkDone, 10)
 
 swapRects = (ind1, ind2) ->
 	val1 = colours[ind1]
@@ -75,11 +98,6 @@ swapRects = (ind1, ind2) ->
 	swap('val')
 	swap('hue')
 
-	context.fillStyle = toHslString(val1.hue)
-	context.fillRect(val1.x, val1.y, rectWidth, rectHeight)
-
-	context.fillStyle = toHslString(val2.hue)
-	context.fillRect(val2.x, val2.y, rectWidth, rectHeight)
 
 isort = ->
 	for j in [index...0]
@@ -214,39 +232,9 @@ hsort = ->
 
 	do work
 
-# Default to bubble sort.
-sort = bsort
+sort = hsort
+reset()
 
-$(document).ready(->
-	canvas = $('#mainCanvas')
-	$('#squareSize').val(rectWidth)
 
-	window.onresize = -> reset()
 
-	$('#algo').change(->
-		selected = $('#algo').val()
 
-		sort =
-			switch $(@).children(':selected').attr('id')
-				when 'bsort'  then bsort
-				when 'isort'  then isort
-				when 'qsort1' then -> qsort(false)
-				when 'qsort2' then -> qsort(true)
-				when 'hsort' then hsort
-				when 'ssort' then ssort
-
-		reset()
-	)
-
-	$('#squareSize').change(->
-		n = parseInt($('#squareSize').val(), 10)
-		return if isNaN(n)
-
-		rectWidth = rectHeight = n
-		reset()
-	)
-
-	$('#reset').click(-> reset())
-
-	reset()
-)
